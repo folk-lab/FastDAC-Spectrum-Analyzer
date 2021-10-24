@@ -1,4 +1,4 @@
-STATUS:  Runs, but there are still some bugs.
+###STATUS:  Runs, but there are still some bugs.
 
 # FastDAC Spectrum Analyzer
 
