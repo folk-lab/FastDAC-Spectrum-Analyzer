@@ -7,16 +7,7 @@ This program allows a user to analyze the power spectral density of a FastDAC's 
 ## Instructions
 
 1. Download and run FastDAC_Spectrum_Analyzer.py
-
-If the script is run on the same computer on which you plan to use the interface:
-
-2. Open 127.0.0.1 in web browser.
+2. The output will let you know that Dash is running and where to access it (ex: http://10.17.173.64:8050/).
 3. To kill the program, type CTRL+C in terminal.
 
-If you plan to use a different device than the one on which the script is run:
-
-2. Ensure that the computer and the device are connected to the same network (ex: Ampel 111 network).
-3. Open 10.17.173.72 in web browser.
-4. To kill the program, type CTRL+C in terminal.
-
-Note:  You cannot use the interface on more than one device at a time.
+If you plan on accessing the interface on a different device, both the computer and the device must be connected to the same network (ex: Ampel 111 network).  You cannot use the interface on more than one device at a time.
