@@ -15,7 +15,8 @@ from dash.dependencies import Input, Output, State
 
 def PSD(port, duration, channels=[0, ]):
 
-    s = serial.Serial(port, 1750000, timeout=1)
+    s = serial.Serial(port, 1750000, timeout=1)        # Fibre optic connection
+    #s = serial.Serial('COM6', 57600, timeout=1)        # USB connection
 
     def Query(command):
 
@@ -83,7 +84,7 @@ X = [[],[],[],[]]
 Y = [[],[],[],[]]
 PORT = [0,'COM4']
 DUR = [0,1.5]
-SELAVG = [0, 3]
+SELAVG = [0, 5]
 SELAX = [0, 'log']
 CHNL = [0, [0]]
 
