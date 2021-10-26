@@ -56,8 +56,8 @@ def PSD(port, duration, channels=[0, ]):
     channel_readings = {ac: list() for ac in channels}
     voltage_readings = []
     try:
-        while s.in_waiting > 24 or len(voltage_readings) <= num_bytes/2:
-            buffer = s.read(24)
+        while s.in_waiting > 240 or len(voltage_readings) <= num_bytes/2:
+            buffer = s.read(240)
             info = [buffer[i:i+2] for i in range(0, len(buffer), 2)]
             for two_bytes in info:
                 int_val = int.from_bytes(two_bytes, 'big')
@@ -82,21 +82,22 @@ def PSD(port, duration, channels=[0, ]):
 
 X = [[],[],[],[]]
 Y = [[],[],[],[]]
-PORT = [0,'COM4']
+PORT = [0,'COM3']
 DUR = [0,1.5]
 SELAVG = [0, 5]
 SELAX = [0, 'log']
 CHNL = [0, [0]]
 
-app = dash.Dash(__name__, title='FastDAC Spectrum Analyzer', update_title='Loading...')
-#app.scripts.config.serve_locally = True
+app = dash.Dash(__name__)
 
 app.layout = html.Div([
 
     html.Div([
 
         html.Div([
-            dcc.Graph(id="live-graph", animate=True)
+            dcc.Graph(id="live-graph", 
+                animate=True)
+
             ], style={'width': '75%', 
             'height':'100%', 
             'margin-left': '15px', 
@@ -105,44 +106,73 @@ app.layout = html.Div([
             'border': '3px black solid'}
             ),
 
-            dcc.Interval(id="graph-update", interval=1000, n_intervals=0)]),
+            dcc.Interval(id="graph-update", 
+                interval=1000, 
+                n_intervals=0)]),
 
     html.Div([
 
         html.Div([ 
-        html.Label(['Port:'], style={'font-weight': 'bold', 'margin-left': '15px','margin-right':'56px'}),
-        dcc.Input(id='enter-port', type='text', value=str(PORT[-1]), style={'width': '40%', 'height':'50%'})
+            html.Label(['Port:'], 
+                style={'font-weight': 'bold', 
+                'margin-left': '15px',
+                'margin-right':'56px'}),
+            dcc.Input(id='enter-port', 
+                type='text', 
+                value=str(PORT[-1]), 
+                style={'width': '40%', 'height':'50%'})
         ], style={'margin-top':'15px'}),
 
         html.Div([
-        html.Label(children=['Duration (s): '], style={'font-weight': 'bold', "text-align": "right","offset":0, 'margin-left': '15px'}),
-        dcc.Input(id='enter-duration', type = 'text',value=str(DUR[-1]), style={'width': '40%', "margin-bottom": "10px"})
+
+            html.Label(children=['Duration (s): '], 
+                style={'font-weight': 'bold',
+                "text-align": "right",
+                "offset":0, 
+                'margin-left': '15px'}),
+
+            dcc.Input(id='enter-duration', 
+                type = 'text',
+                value=str(DUR[-1]), 
+                style={'width': '40%', "margin-bottom": "10px"})
         ]),
 
         html.Div([
-        html.Label(['Show channels: '], style={'font-weight': 'bold', "text-align": "right","offset":0, 'display': 'inline-block', 'margin-left': '15px'}),
-        dcc.Checklist(id='channels-checklist', 
-                options=[
-                    {'label': '0', 'value': 0},
-                    {'label': '1', 'value': 1},
-                    {'label': '2', 'value': 2},
-                    {'label': '3', 'value': 3}], 
-                value=[0],
-                style={"margin-bottom": "10px", 'display': 'inline-block','margin-left': '15px','margin-right': '10px'}),
+            html.Label(['Show channels: '], 
+                style={'font-weight': 'bold',
+                "text-align": "right",
+                "offset":0,
+                'display': 'inline-block',
+                'margin-left': '15px'}),
+
+            dcc.Checklist(id='channels-checklist', 
+                    options=[
+                        {'label': '0', 'value': 0},
+                        {'label': '1', 'value': 1},
+                        {'label': '2', 'value': 2},
+                        {'label': '3', 'value': 3}], 
+                    value=[0],
+                    style={"margin-bottom": "10px", 
+                    'display': 'inline-block',
+                    'margin-left': '15px',
+                    'margin-right': '10px'}),
         ]),
 
         html.Div([
-        dcc.Dropdown(
-                id='avg-dropdown', 
-                options=[
-                    {'label': 'Average over 1 cycle:', 'value': 1},
-                    {'label': 'Average over 2 cycles:', 'value': 2},
-                    {'label': 'Average over 3 cycles:', 'value': 3},
-                    {'label': 'Average over 4 cycles:', 'value': 4},
-                    {'label': 'Average over 5 cycles:', 'value': 5},
-                    {'label': 'Average over 6 cycles:', 'value': 6}],
-                value=5,
-                style={ "margin-bottom": "15px", 'width':'90%','margin-left': '10px','margin-right': '10px'}),
+            dcc.Dropdown(
+                    id='avg-dropdown', 
+                    options=[
+                        {'label': 'Average over 1 cycle:', 'value': 1},
+                        {'label': 'Average over 2 cycles:', 'value': 2},
+                        {'label': 'Average over 3 cycles:', 'value': 3},
+                        {'label': 'Average over 4 cycles:', 'value': 4},
+                        {'label': 'Average over 5 cycles:', 'value': 5},
+                        {'label': 'Average over 6 cycles:', 'value': 6}],
+                    value=5,
+                    style={ "margin-bottom": "15px", 
+                    'width':'90%',
+                    'margin-left': '10px',
+                    'margin-right': '10px'}),
         ]),
 
         html.Div([
@@ -152,11 +182,19 @@ app.layout = html.Div([
                     {'label': 'Log Axis', 'value': 'log'},
                     {'label': 'Linear Axis', 'value': 'linear'}], 
                 value='log', 
-                style={ "margin-bottom": "15px", 'margin-left': '10px','margin-right': '10px',  'width':'90%'}),
+                style={ "margin-bottom": "15px", 
+                'margin-left': '10px',
+                'margin-right': '10px',  
+                'width':'90%'}),
         ]),
 
-        html.Div([html.Button('OK', id='button', n_clicks=0)], 
-        style={'text-align':'center',"margin-bottom": "10px" })
+        html.Div([
+
+            html.Button('OK', 
+                id='button', 
+                n_clicks=0)], 
+                style={'text-align':'center',
+                "margin-bottom": "10px" })
 
         ], style = {'width':'25%',
             'height':'25%',
@@ -167,22 +205,43 @@ app.layout = html.Div([
 
         html.Div([
             
-            html.Div([html.Label('FastDAC ID: ', style={'font-weight': 'bold', 'margin-right':'10px'}),
-                    html.Label(children='-', id = 'label1')], 
+            html.Div([
+
+                html.Label('FastDAC ID: ', 
+                    style={'font-weight': 'bold', 
+                        'margin-right':'10px'}),
+
+                html.Label(children='-', 
+                    id = 'label1')], 
                     style={"margin-top": "15px", 
                     "margin-left": "15px", 
                     "margin-right": "15px"}),
 
-            html.Div([html.Label('Runtime (s): ', style={'font-weight': 'bold', 'margin-right':'15px'}),
-                html.Label(children='-', id = 'label2')], 
-                style={
-                    "margin-top": "15px",  
-                    "margin-bottom": "15px", 
-                    "margin-left": "15px", 
-                    "margin-right": "15px"}),
+            html.Div([
+                
+                html.Label('Runtime (s): ', 
+                    style={'font-weight': 'bold', 
+                        'margin-right':'15px'}),
 
-            html.Div([html.Label('bytes / cycle / channel: ', style={'font-weight': 'bold', 'margin-right':'15px'}),
-                html.Label(children='-', id = 'label3', style={'textAlign': 'left', 'margin-right':'15px'})], 
+                html.Label(children='-', 
+                    id = 'label2')], 
+                    style={
+                        "margin-top": "15px",  
+                        "margin-bottom": "15px", 
+                        "margin-left": "15px", 
+                        "margin-right": "15px"}),
+
+            html.Div([
+                
+                html.Label('bytes / cycle / channel: ', 
+                    style={'font-weight': 'bold', 
+                    'margin-right':'15px'}),
+
+                html.Label(children='-', 
+                    id = 'label3', 
+                    style={'textAlign': 'left', 
+                    'margin-right':'15px'})], 
+
                 style={
                     "margin-top": "15px",  
                     "margin-bottom": "15px", 
@@ -233,35 +292,62 @@ def update_graph(input_data, selected_avg, selected_axes, channel_arr, n_clicks,
 
     fig = make_subplots(rows=[1,2,2,2][len(CHNL[-1])-1], cols=[1,1,2,2][len(CHNL[-1])-1])
     fig.update_layout(title_text="FastDAC Spectrum Analyzer", title_x=0.5, legend_title = "channels")
-    fig.update_yaxes(type=SELAX[-1], title_text='Potential [mV]')
+    fig.update_yaxes(type=SELAX[-1], title_text='mV*mV / Hz')
     fig.update_xaxes(title_text='Frequency [Hz]')
     fig.update_layout(showlegend=False)
 
     for k in range(0, len(CHNL[-1])):
         X[k].append(psd[0][k][0])
         Y[k].append(psd[1][k][0])
+
         
         if len(X[k])<SELAVG[-1]:
             xnew=np.mean(X[k][-len(X[k]):-1], axis=0)
             ynew=np.mean(Y[k][-len(X[k]):-1], axis=0)
 
+            fig.add_trace(
+                go.Scatter(
+                    x=xnew[15:], 
+                    y=ynew[15:], 
+                    name=str(CHNL[-1][k])), 
+                    row=[1,2,1,2][k],
+                    col=[1,1,2,2][k])
+
         elif SELAVG[-1]==1:
             xnew=psd[0][k][0]
             ynew=psd[1][k][0]
+
+            fig.add_trace(
+                go.Scatter(
+                    x=xnew[15:], 
+                    y=ynew[15:], 
+                    name=str(CHNL[-1][k])), 
+                    row=[1,2,1,2][k],
+                    col=[1,1,2,2][k])
             
+        elif len(X[k][-1]) != len(X[k][-SELAVG[-1]]):
+            fig.add_annotation(
+                xref="x domain", 
+                yref="y domain",
+                x=0.5, 
+                y=0.5,
+                font = dict(size = 20, color = 'red'),
+                text="LOADING...",
+                showarrow=False)
+
         else:
             xnew=np.mean(X[k][-SELAVG[-1]:-1], axis=0)
             ynew=np.mean(Y[k][-SELAVG[-1]:-1], axis=0)
 
-        fig.add_trace(
-            go.Scatter(
-                x=xnew[15:], 
-                y=ynew[15:], 
-                name=str(CHNL[-1][k])), 
-                row=[1,2,1,2][k],
-                col=[1,1,2,2][k])
+            fig.add_trace(
+                go.Scatter(
+                    x=xnew[15:], 
+                    y=ynew[15:], 
+                    name=str(CHNL[-1][k])), 
+                    row=[1,2,1,2][k],
+                    col=[1,1,2,2][k])
 
     return fig, 1500*float(dur), psd[4], psd[3], psd[2]
 
 if __name__ == '__main__':
-     app.run_server(host= '0.0.0.0', debug=False)
+     app.run_server(host= '0.0.0.0', debug=True)
