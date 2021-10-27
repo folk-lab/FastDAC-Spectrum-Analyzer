@@ -14,6 +14,8 @@ from dash import html
 from dash import dcc
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
+from dash_extensions import Download
+from dash_extensions.snippets import send_file
 
 def PSD(port, baudrate, duration, channels=[0, ]):
 
@@ -119,6 +121,19 @@ app.layout = html.Div(
         dbc.ListGroup(
             [ 
                 dbc.Label(
+                    ['Download'], color = '#1e81b0'
+                ),
+                dbc.Button("Download", id="download-btn"), 
+                Download(id="download")
+
+            ],
+            flush=True,
+            style={'margin-top':'15px', 'margin-left': '15px', "margin-right": "15px"}
+        ),
+
+        dbc.ListGroup(
+            [ 
+                dbc.Label(
                     ['Port:'], color = '#1e81b0'
                 ),
                 dbc.Input(
@@ -138,8 +153,8 @@ app.layout = html.Div(
                 dbc.RadioItems(
                     id='usb-checklist', 
                     options=[
+                        {'label': 'Fiberoptic', 'value': 1750000},
                         {'label': 'USB', 'value': 57600},
-                        {'label': 'Fibre Optic', 'value': 1750000},
                     ], 
                     value = 1750000
                     
@@ -168,7 +183,7 @@ app.layout = html.Div(
                     ['Show channels: '], color = '#1e81b0'
                 ),
 
-            dbc.Checklist(
+            dcc.Checklist(
                 id='channels-checklist', 
                 options=[
                     {'label': '0', 'value': 0},
@@ -176,7 +191,8 @@ app.layout = html.Div(
                     {'label': '2', 'value': 2},
                     {'label': '3', 'value': 3}
                 ], 
-                    
+                inputStyle = {"margin-right": "5px"},
+                labelStyle = {"display":"inline-block", "margin-right": "20px"},    
                 value=[0],
                 
             ),
@@ -185,25 +201,23 @@ app.layout = html.Div(
 
         dbc.ListGroup(
             [
-            dbc.RadioItems(
-                id='avg-checklist', 
+            html.Label("Average over ", style={'color':"#1e81b0", "margin-right": "15px"}),
+            dcc.Dropdown(
+                id='avg-dropdown', 
                 options=[
-                    {'label': 'Average over 0 cycles', 'value': 0},
-                    {'label': 'Average over 1 cycles', 'value': 1},
-                    {'label': 'Average over 2 cycles', 'value': 2},
-                    {'label': 'Average over 3 cycles', 'value': 3},
-                    {'label': 'Average over 4 cycles', 'value': 4},
-                    {'label': 'Average over 5 cycles', 'value': 5},
-                    {'label': 'Average over 6 cycles', 'value': 6},
-                    {'label': 'Average over 7 cycles', 'value': 7}
+                    {'label': '1', 'value': 1},
+                    {'label': '2', 'value': 2},
+                    {'label': '3', 'value': 3},
+                    {'label': '4', 'value': 4},
+                    {'label': '5', 'value': 5},
+                    {'label': '6', 'value': 6},
+                    {'label': '7', 'value': 7}
                 ], 
-
-                
-                    
                 value=5,
-                
+                style={'display':'inline-block', 'color':'black'}
             ),
-        ] , style={'margin-top':'15px', 'margin-left': '15px', "margin-right": "15px"}, flush=True
+            html.Label(" cycles", style={'color':"#1e81b0", 'margin-left': '15px'}),
+        ] , style={'margin-top':'15px', 'margin-left': '15px', "margin-right": "15px", 'display':'inline-block'}, flush=True
     ),
 
         dbc.ListGroup(
@@ -335,13 +349,15 @@ app.layout = html.Div(
 @app.callback(
     Output(component_id='live-graph', component_property='figure'),
     Output(component_id='graph-update', component_property='interval'),
+    Output("download", "data"), 
     Output(component_id = 'label0', component_property='children'),
     Output(component_id = 'label1', component_property='children'),
     Output(component_id = 'label2', component_property='children'),
     Output(component_id = 'label3', component_property='children'),
     [Input(component_id='graph-update', component_property='n_intervals'),
+    Input("download-btn", "n_clicks"),
     Input(component_id='usb-checklist', component_property='value'),
-    Input(component_id='avg-checklist', component_property='value'),
+    Input(component_id='avg-dropdown', component_property='value'),
     Input(component_id='axes-checklist', component_property='value'),
     Input(component_id='channels-checklist', component_property='value'),
     Input(component_id='button', component_property='n_clicks'),
@@ -349,7 +365,7 @@ app.layout = html.Div(
     State(component_id='enter-duration', component_property='value')]
     )
 
-def update_graph(input_data, baudrate, selected_avg, selected_axes, channel_arr, n_clicks, port, dur):
+def update_graph(input_data, n_clicks2, baudrate, selected_avg, selected_axes, channel_arr, n_clicks, port, dur):
 
     changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
 
@@ -417,7 +433,8 @@ def update_graph(input_data, baudrate, selected_avg, selected_axes, channel_arr,
                     row=[1,2,1,2][k],
                     col=[1,1,2,2][k])
 
-    return fig, 1500*float(dur), msg, psd[4], psd[3], psd[2]
+    return fig, 1500*float(dur), msg, psd[4], psd[3], psd[2], send_file(r"C:\Users\folkl\Desktop")
+
 
 if __name__ == '__main__':
      app.run_server(host= '0.0.0.0', debug=True)
