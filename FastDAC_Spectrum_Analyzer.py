@@ -16,6 +16,12 @@ import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
 from dash_extensions import Download
 from dash_extensions.snippets import send_file
+import dash_daq as daq
+import pandas as pd
+import os
+
+if not os.path.exists("Desktop/FastDAC_Spectrum_Analyzer_Downloads"):
+    os.mkdir("Desktop/FastDAC_Spectrum_Analyzer_Downloads")
 
 def PSD(port, baudrate, duration, channels=[0, ]):
 
@@ -85,7 +91,7 @@ def PSD(port, baudrate, duration, channels=[0, ]):
 
 X = [[],[],[],[]]
 Y = [[],[],[],[]]
-PORT = [0,'COM3']
+PORT = [0,'COM4']
 BR = [0,1750000]
 DUR = [0,1.5]
 SELAVG = [0, 5]
@@ -123,7 +129,7 @@ app.layout = html.Div(
                 dbc.Label(
                     ['Download'], color = '#1e81b0'
                 ),
-                dbc.Button("Download", id="download-btn"), 
+                daq.BooleanSwitch(id="download-switch", on=False), 
                 Download(id="download")
 
             ],
@@ -349,13 +355,12 @@ app.layout = html.Div(
 @app.callback(
     Output(component_id='live-graph', component_property='figure'),
     Output(component_id='graph-update', component_property='interval'),
-    Output("download", "data"), 
     Output(component_id = 'label0', component_property='children'),
     Output(component_id = 'label1', component_property='children'),
     Output(component_id = 'label2', component_property='children'),
     Output(component_id = 'label3', component_property='children'),
     [Input(component_id='graph-update', component_property='n_intervals'),
-    Input("download-btn", "n_clicks"),
+    Input("download-switch", "on"),
     Input(component_id='usb-checklist', component_property='value'),
     Input(component_id='avg-dropdown', component_property='value'),
     Input(component_id='axes-checklist', component_property='value'),
@@ -365,7 +370,7 @@ app.layout = html.Div(
     State(component_id='enter-duration', component_property='value')]
     )
 
-def update_graph(input_data, n_clicks2, baudrate, selected_avg, selected_axes, channel_arr, n_clicks, port, dur):
+def update_graph(input_data, ON, baudrate, selected_avg, selected_axes, channel_arr, n_clicks, port, dur):
 
     changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
 
@@ -433,7 +438,13 @@ def update_graph(input_data, n_clicks2, baudrate, selected_avg, selected_axes, c
                     row=[1,2,1,2][k],
                     col=[1,1,2,2][k])
 
-    return fig, 1500*float(dur), msg, psd[4], psd[3], psd[2], send_file(r"C:\Users\folkl\Desktop")
+            if ON == True:
+                fig.write_html("Desktop/FastDAC_Spectrum_Analyzer_Downloads/DASHFIG.html")
+                df = pd.DataFrame([[xnew, ynew]], columns = ['Frequency (Hz)', 'mV*mV/Hz'])
+                df.to_csv('Desktop/FastDAC_Spectrum_Analyzer_Downloads/DASHCSV.csv', index=False)
+
+
+    return fig, 1500*float(dur), msg, psd[4], psd[3], psd[2]
 
 
 if __name__ == '__main__':
