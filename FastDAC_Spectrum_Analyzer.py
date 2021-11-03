@@ -19,6 +19,8 @@ from dash_extensions.snippets import send_file
 import dash_daq as daq
 import pandas as pd
 import os
+from datetime import datetime
+from serial.serialutil import SerialException
 
 if not os.path.exists("Desktop/FastDAC_Spectrum_Analyzer_Downloads"):
     os.mkdir("Desktop/FastDAC_Spectrum_Analyzer_Downloads")
@@ -98,9 +100,7 @@ SELAVG = [0, 5]
 SELAX = [0, 'log']
 CHNL = [0, [0]]
 
-#app = dash.Dash(__name__)
 app = dash.Dash(external_stylesheets=[dbc.themes.DARKLY])
-
 app.layout = html.Div(
     [
 
@@ -202,12 +202,22 @@ app.layout = html.Div(
                 value=[0],
                 
             ),
-        ]  ,flush=True , style={'margin-top':'15px', 'margin-left': '15px',"margin-right": "15px"}
+        ],
+        flush=True , 
+        style={'margin-top':'15px', 
+        'margin-left': '15px',
+        "margin-right": "15px"}
     ),
 
         dbc.ListGroup(
             [
-            html.Label("Average over ", style={'color':"#1e81b0", "margin-right": "15px"}),
+
+            html.Label(
+            "Average over ",
+            style={'color':"#1e81b0", 
+            "margin-right": "15px"}
+            ),
+
             dcc.Dropdown(
                 id='avg-dropdown', 
                 options=[
@@ -223,7 +233,13 @@ app.layout = html.Div(
                 style={'display':'inline-block', 'color':'black'}
             ),
             html.Label(" cycles", style={'color':"#1e81b0", 'margin-left': '15px'}),
-        ] , style={'margin-top':'15px', 'margin-left': '15px', "margin-right": "15px", 'display':'inline-block'}, flush=True
+        ], 
+        
+        style={'margin-top':'15px', 
+        'margin-left': '15px', 
+        "margin-right": "15px", 
+        'display':'inline-block'}, 
+        flush=True
     ),
 
         dbc.ListGroup(
@@ -238,7 +254,12 @@ app.layout = html.Div(
                     value = 'log'
                     
                 ),
-            ], style = {'margin-top':'15px', 'margin-left': '15px', "margin-right": "15px"}, flush=True
+            ], 
+            
+            style = {'margin-top':'15px', 
+            'margin-left': '15px', 
+            "margin-right": "15px"}, 
+            flush=True
         ),
 
         dbc.ListGroup(
@@ -246,7 +267,10 @@ app.layout = html.Div(
             dbc.Button('OK', 
                 id='button', 
                 n_clicks=0)], 
-                style = {'margin-top':'15px', 'margin-left': '15px', "margin-right": "15px", "margin-bottom": "15px"},
+                style = {'margin-top':'15px', 
+                    'margin-left': '15px', 
+                    "margin-right": "15px", 
+                    "margin-bottom": "15px"},
                 flush=True,
                 )
             ],
@@ -309,7 +333,8 @@ app.layout = html.Div(
             ],  
             style={
                 "margin-left": "15px", 
-                "margin-right": "15px"}, flush=True
+                "margin-right": "15px"}, 
+            flush=True
         ),
 
         dbc.ListGroup(
@@ -344,13 +369,14 @@ app.layout = html.Div(
                 'width':'48.5%'})
 
     ], style={
-        #'backgroundColor':'#BFBAB9', 
         'padding-top':'1%', 
         'padding-bottom':'50%',
         'padding-right':'0%',
         'padding-left':'0%'}
         
 )
+
+
 
 @app.callback(
     Output(component_id='live-graph', component_property='figure'),
@@ -370,8 +396,15 @@ app.layout = html.Div(
     State(component_id='enter-duration', component_property='value')]
     )
 
+
 def update_graph(input_data, ON, baudrate, selected_avg, selected_axes, channel_arr, n_clicks, port, dur):
 
+    fig = make_subplots(rows=[1,2,2,2][len(CHNL[-1])-1], cols=[1,1,2,2][len(CHNL[-1])-1])
+    fig.update_layout(title_text="FastDAC Spectrum Analyzer", title_x=0.5, legend_title = "channels", template='plotly_dark')
+    fig.update_yaxes(type=SELAX[-1], title_text='mV*mV / Hz')
+    fig.update_xaxes(title_text='Frequency [Hz]')
+    fig.update_layout(showlegend=False)
+    
     changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
 
     if 'button' in changed_id:
@@ -382,70 +415,71 @@ def update_graph(input_data, ON, baudrate, selected_avg, selected_axes, channel_
         SELAX.append(selected_axes)
         CHNL.append(channel_arr)
         msg = 'loading...'
+
     else:
         msg = '-'
 
-    psd = PSD(str(PORT[-1]), str(BR[-1]), float(DUR[-1])*2/3, CHNL[-1])
+    while True:
+        try:
+            psd = PSD(str(PORT[-1]), str(BR[-1]), float(DUR[-1]), CHNL[-1])
 
-    fig = make_subplots(rows=[1,2,2,2][len(CHNL[-1])-1], cols=[1,1,2,2][len(CHNL[-1])-1])
-    fig.update_layout(title_text="FastDAC Spectrum Analyzer", title_x=0.5, legend_title = "channels", template='plotly_dark')
-    fig.update_yaxes(type=SELAX[-1], title_text='mV*mV / Hz')
-    fig.update_xaxes(title_text='Frequency [Hz]')
-    fig.update_layout(showlegend=False)
+            for k in range(0, len(CHNL[-1])):
+                    X[k].append(psd[0][k][0])
+                    Y[k].append(psd[1][k][0])
 
-    for k in range(0, len(CHNL[-1])):
-        X[k].append(psd[0][k][0])
-        Y[k].append(psd[1][k][0])
+                    
+                    if len(X[k])<SELAVG[-1] and len(X[k])>0:
+                        xnew=np.mean(X[k][-len(X[k]):-1], axis=0)
+                        ynew=np.mean(Y[k][-len(X[k]):-1], axis=0)
 
-        
-        if len(X[k])<SELAVG[-1]:
-            xnew=np.mean(X[k][-len(X[k]):-1], axis=0)
-            ynew=np.mean(Y[k][-len(X[k]):-1], axis=0)
+                        fig.add_trace(
+                            go.Scatter(
+                                x=xnew[15:], 
+                                y=ynew[15:], 
+                                name=str(CHNL[-1][k])), 
+                                row=[1,2,1,2][k],
+                                col=[1,1,2,2][k])
 
-            fig.add_trace(
-                go.Scatter(
-                    x=xnew[15:], 
-                    y=ynew[15:], 
-                    name=str(CHNL[-1][k])), 
-                    row=[1,2,1,2][k],
-                    col=[1,1,2,2][k])
+                    elif SELAVG[-1]==1:
+                        xnew=psd[0][k][0]
+                        ynew=psd[1][k][0]
 
-        elif SELAVG[-1]==1:
-            xnew=psd[0][k][0]
-            ynew=psd[1][k][0]
+                        fig.add_trace(
+                            go.Scatter(
+                                x=xnew[15:], 
+                                y=ynew[15:], 
+                                name=str(CHNL[-1][k])), 
+                                row=[1,2,1,2][k],
+                                col=[1,1,2,2][k])
+                        
+                    elif len(X[k][-1]) != len(X[k][-SELAVG[-1]]):
+                        msg = 'loading...'
 
-            fig.add_trace(
-                go.Scatter(
-                    x=xnew[15:], 
-                    y=ynew[15:], 
-                    name=str(CHNL[-1][k])), 
-                    row=[1,2,1,2][k],
-                    col=[1,1,2,2][k])
-            
-        elif len(X[k][-1]) != len(X[k][-SELAVG[-1]]):
-            msg = 'loading...'
+                    else:
+                        xnew=np.mean(X[k][-SELAVG[-1]:-1], axis=0)
+                        ynew=np.mean(Y[k][-SELAVG[-1]:-1], axis=0)
+                        msg = '-'
 
-        else:
-            xnew=np.mean(X[k][-SELAVG[-1]:-1], axis=0)
-            ynew=np.mean(Y[k][-SELAVG[-1]:-1], axis=0)
-            msg = '-'
+                        fig.add_trace(
+                            go.Scatter(
+                                x=xnew[15:], 
+                                y=ynew[15:], 
+                                name=str(CHNL[-1][k])), 
+                                row=[1,2,1,2][k],
+                                col=[1,1,2,2][k])
 
-            fig.add_trace(
-                go.Scatter(
-                    x=xnew[15:], 
-                    y=ynew[15:], 
-                    name=str(CHNL[-1][k])), 
-                    row=[1,2,1,2][k],
-                    col=[1,1,2,2][k])
+                        if ON == True:
+                            dt = datetime.now()
+                            fig.write_html('FDSA_{}-{}-{}_{}:{}:{}.html'.format(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second))
+                            df = pd.DataFrame([[xnew, ynew]], columns = ['Frequency (Hz)', 'mV*mV/Hz'])
+                            df.to_csv('FDSA_{}-{}-{}_{}:{}:{}.csv'.format(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second), index=False)
 
-            if ON == True:
-                fig.write_html("Desktop/FastDAC_Spectrum_Analyzer_Downloads/DASHFIG.html")
-                df = pd.DataFrame([[xnew, ynew]], columns = ['Frequency (Hz)', 'mV*mV/Hz'])
-                df.to_csv('Desktop/FastDAC_Spectrum_Analyzer_Downloads/DASHCSV.csv', index=False)
+            break
 
+        except (SerialException, FileNotFoundError, IndexError):
+            msg = 'No FastDAC at specified port'
 
-    return fig, 1500*float(dur), msg, psd[4], psd[3], psd[2]
-
+    return fig, float(dur), msg, psd[4], psd[3], psd[2]
 
 if __name__ == '__main__':
      app.run_server(host= '0.0.0.0', debug=True)
