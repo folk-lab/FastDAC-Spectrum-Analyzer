@@ -482,4 +482,4 @@ def update_graph(input_data, ON, baudrate, selected_avg, selected_axes, channel_
     return fig, float(dur), msg, psd[4], psd[3], psd[2]
 
 if __name__ == '__main__':
-     app.run_server(host= '0.0.0.0', debug=True)
+     app.run_server(host= '0.0.0.0', debug=False)
