@@ -22,8 +22,8 @@ import os
 from datetime import datetime
 from serial.serialutil import SerialException
 
-if not os.path.exists("Desktop/FastDAC_Spectrum_Analyzer_Downloads"):
-    os.mkdir("Desktop/FastDAC_Spectrum_Analyzer_Downloads")
+if not os.path.exists("FastDAC_Spectrum_Analyzer_Downloads"):
+    os.mkdir("FastDAC_Spectrum_Analyzer_Downloads")
 
 def PSD(port, baudrate, duration, channels=[0, ]):
 
@@ -421,7 +421,10 @@ def update_graph(input_data, ON, baudrate, selected_avg, selected_axes, channel_
 
     while True:
         try:
-            psd = PSD(str(PORT[-1]), str(BR[-1]), float(DUR[-1]), CHNL[-1])
+            psd = PSD(str(PORT[-1]), str(BR[-1]), 0.75*float(DUR[-1]), CHNL[-1])
+            Numbytes = psd[2]
+            Runtime = psd[3]
+            fdid = psd[4]
 
             for k in range(0, len(CHNL[-1])):
                     X[k].append(psd[0][k][0])
@@ -476,10 +479,13 @@ def update_graph(input_data, ON, baudrate, selected_avg, selected_axes, channel_
 
             break
 
-        except (SerialException, FileNotFoundError, IndexError):
+        except (FileNotFoundError):
             msg = 'No FastDAC at specified port'
+            Numbytes = str(0)
+            Runtime = str(0)
+            fdid = '-'
 
-    return fig, float(dur), msg, psd[4], psd[3], psd[2]
+    return fig, 1000*float(dur), msg, fdid, Runtime, Numbytes
 
 if __name__ == '__main__':
      app.run_server(host= '0.0.0.0', debug=False)
