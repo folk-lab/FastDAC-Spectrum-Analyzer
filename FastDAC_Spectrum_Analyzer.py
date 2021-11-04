@@ -1,6 +1,8 @@
 # FastDAC Spectrum Analyzer
 # by Anton Cecic
 
+# Required packages:  pyserial, numpy, scipy, plotly, dash, dash_bootstrap_components, dash_extensions, dash_daq, pandas, os, datetime
+
 from re import template
 import time
 import serial
