@@ -21,18 +21,19 @@ import pandas as pd
 import os
 from datetime import datetime
 from serial.serialutil import SerialException
+from dash.exceptions import PreventUpdate
 
 if not os.path.exists("FastDAC_Spectrum_Analyzer_Downloads"):
     os.mkdir("FastDAC_Spectrum_Analyzer_Downloads")
 
 def PSD(port, baudrate, duration, channels=[0, ]):
-
+    ts = time.time()
     s = serial.Serial(port, baudrate, timeout=1)        # Fibre optic connection
 
     def Query(command):
-
         if not s.is_open:
             s.open()
+
         s.write(command)
         data = s.readline()
         data = data.decode('ascii', errors='ignore').rstrip('\r\n')
@@ -40,8 +41,6 @@ def PSD(port, baudrate, duration, channels=[0, ]):
         return data
 
     FastDAC_ID = Query(b"*IDN?\r")
-
-    ts = time.time()
     xper = []
     yper = []
 
@@ -171,7 +170,7 @@ app.layout = html.Div(
         dbc.ListGroup(
             [ 
                 dbc.Label(
-                    ['Duration:'], color = '#1e81b0'
+                    ['Callback Interval (s)'], color = '#1e81b0'
                 ),
                 dbc.Input(
                     id='enter-duration', 
@@ -249,7 +248,7 @@ app.layout = html.Div(
                     id='axes-checklist', 
                     options=[
                         {'label': 'log', 'value': 'log'},
-                        {'label': 'linear', 'value': 'lin'},
+                        {'label': 'linear', 'value': 'linear'},
                     ], 
                     value = 'log'
                     
@@ -321,7 +320,7 @@ app.layout = html.Div(
         dbc.ListGroup(
             [
             dbc.Label(
-                'Runtime (s): ', 
+                'FastDAC runtime (s): ', 
                 color="#1e81b0",
                 style={
                     'margin-right':'15px'}
@@ -387,17 +386,18 @@ app.layout = html.Div(
     Output(component_id = 'label3', component_property='children'),
     [Input(component_id='graph-update', component_property='n_intervals'),
     Input("download-switch", "on"),
-    Input(component_id='usb-checklist', component_property='value'),
-    Input(component_id='avg-dropdown', component_property='value'),
-    Input(component_id='axes-checklist', component_property='value'),
-    Input(component_id='channels-checklist', component_property='value'),
     Input(component_id='button', component_property='n_clicks'),
     State(component_id='enter-port', component_property='value'),
-    State(component_id='enter-duration', component_property='value')]
+    State(component_id='usb-checklist', component_property='value'),
+    State(component_id='enter-duration', component_property='value'),
+    State(component_id='avg-dropdown', component_property='value'),
+    State(component_id='channels-checklist', component_property='value'),
+    State(component_id='axes-checklist', component_property='value'),
+    ]
     )
 
 
-def update_graph(input_data, ON, baudrate, selected_avg, selected_axes, channel_arr, n_clicks, port, dur):
+def callback(input_data, ON, n_clicks, port, baudrate, dur, selected_avg, channel_arr, selected_axes):
 
     fig = make_subplots(rows=[1,2,2,2][len(CHNL[-1])-1], cols=[1,1,2,2][len(CHNL[-1])-1])
     fig.update_layout(title_text="FastDAC Spectrum Analyzer", title_x=0.5, legend_title = "channels", template='plotly_dark')
@@ -421,7 +421,7 @@ def update_graph(input_data, ON, baudrate, selected_avg, selected_axes, channel_
 
     while True:
         try:
-            psd = PSD(str(PORT[-1]), str(BR[-1]), 0.75*float(DUR[-1]), CHNL[-1])
+            psd = PSD(str(PORT[-1]), str(BR[-1]), float(DUR[-1]*0.75), CHNL[-1])
             Numbytes = psd[2]
             Runtime = psd[3]
             fdid = psd[4]
@@ -479,13 +479,16 @@ def update_graph(input_data, ON, baudrate, selected_avg, selected_axes, channel_
 
             break
 
-        except (FileNotFoundError):
+        except (FileNotFoundError, RuntimeWarning):
             msg = 'No FastDAC at specified port'
             Numbytes = str(0)
             Runtime = str(0)
             fdid = '-'
 
+        except (IndexError):
+            msg = 'loading...'
+
     return fig, 1000*float(dur), msg, fdid, Runtime, Numbytes
 
 if __name__ == '__main__':
-     app.run_server(host= '0.0.0.0', debug=False)
+     app.run_server(host= '0.0.0.0', debug=True)
