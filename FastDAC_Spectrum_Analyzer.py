@@ -493,4 +493,6 @@ def callback(input_data, ON, n_clicks, port, baudrate, dur, selected_avg, channe
     return fig, 1000*float(dur), msg, fdid, Runtime, Numbytes
 
 if __name__ == '__main__':
-     app.run_server(host= '0.0.0.0', debug=True)
+     app.run_server(debug=True)  
+    #  app.run_server(debug=False, host='0.0.0.0')  # NEVER use debug=True with host = '0.0.0.0' as it makes the computer vulnerable to attacks
+ 
