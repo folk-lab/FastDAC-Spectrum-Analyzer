@@ -21,85 +21,122 @@ from dash_extensions.snippets import send_file
 import dash_daq as daq
 import pandas as pd
 import os
-from datetime import datetime
+import datetime
 from serial.serialutil import SerialException
 from dash.exceptions import PreventUpdate
+from re import I
+import numpy as np
+from pathlib import Path
+from logging import exception
+import matplotlib.animation as animation
+import struct
+import matplotlib.pyplot as plt
+PORT = [0, 'COM4']
+DUR = [0,1]
+SELAVG = [0, 5]
+SELAX = [0, 'log']
+CHNL = [0, [0,]]
 
-if not os.path.exists("FastDAC_Spectrum_Analyzer_Downloads"):
-    os.mkdir("FastDAC_Spectrum_Analyzer_Downloads")
+def make_layout():
+    global fig
+    fig = make_subplots(rows=[1,2,2,2][len(CHNL[-1])-1], cols=[1,1,2,2][len(CHNL[-1])-1])
+    fig.update_layout(title_text=" ", title_x=0.5, legend_title = "channels", template='plotly_dark')
+    fig.update_yaxes(type=SELAX[-1], title_text=r'mV<sup>2</sup> / Hz')
+    fig.update_xaxes(title_text='Frequency [Hz]')
+    fig.update_layout(showlegend=False)
+    return fig
 
-def PSD(port, baudrate, duration, channels=[0, ]):
-    ts = time.time()
-    s = serial.Serial(port, baudrate, timeout=1)        # Fibre optic connection
+make_layout()
 
-    def Query(command):
-        if not s.is_open:
-            s.open()
+def connect():
+    global ser
+    ser = serial.Serial(PORT[-1], baudrate=1750000, timeout=1)
 
-        s.write(command)
-        data = s.readline()
+connect()
+
+def query(command):
+
+        ser.write(command)
+        data = ser.readline()
         data = data.decode('ascii', errors='ignore').rstrip('\r\n')
-        s.close()
         return data
 
-    FastDAC_ID = Query(b"*IDN?\r")
-    xper = []
-    yper = []
+def IDN():
+    return query(b"*IDN?\r")
 
-    convert_time = list()
-    for c in channels:
-        cmd = bytes("READ_CONVERT_TIME,{}\r".format(c), 'ascii')
-        read_time_bytes = Query(cmd)
-        read_time = int(read_time_bytes)
+def READ_CONVERT_TIME(channel=[0,]):
+    cmd = "READ_CONVERT_TIME,{}\r".format(channel)
+    return query(bytes(cmd, "ascii"))
 
-        if read_time not in convert_time:
-            convert_time.append(read_time)
+def READ_MEASURE_FREQ(channels=[0,]):
+        convert_time = list()
+        for c in channels:
+            read_time_bytes = READ_CONVERT_TIME(c)
+            time.sleep(0.3)
+            read_time = int(read_time_bytes)
 
-    c_freq = 1/(convert_time[0]*10**-6)  # Hz
-    measure_freq = c_freq/len(channels)
-    num_bytes = int(np.round(measure_freq*duration))
+            if read_time not in convert_time:
+                convert_time.append(read_time)
 
-    cmd = "SPEC_ANA,{},{}\r".format("".join(str(ch) for ch in channels), num_bytes)
+        c_freq = 1/(convert_time[0]*10**-6)  # Hz
+        return c_freq/len(channels)
 
-    if not s.is_open:
-        s.open()
-    s.write(bytes(cmd,'ascii'))
+def ASK_SPEC_ANA(duration, measure_freq, channels=[0,]):
+
+        num_bytes = int(np.round(measure_freq*duration))
+        cmd = "SPEC_ANA,{},{}\r".format("".join(str(ch) for ch in channels), num_bytes)
+        return ser.write(bytes(cmd,'ascii'))
+
+def two_bytes_to_int(two_bytes, bigEndian=True):
+
+    if bigEndian:
+        return struct.unpack(">H", two_bytes)[0]
+    else:
+        return struct.unpack("<H", two_bytes)[0]
+
+def map_int16_to_mV(int_val):
+    return (int_val - 0) * (20000.0) / (65536.0) - 10000.0
+
+def GET_SPEC_ANA():
+
+        voltage_readings = []
+        buffer = ser.read(ser.in_waiting)
+        stuff = buffer.decode('ascii', errors='ignore').rstrip('\r\n')
+        if 'READ_FINISHED' in stuff:
+            found = True
+        else:
+            found = False
+        info = [buffer[i:i+2] for i in range(0, len(buffer), 2)]
+        for two_bytes in info:
+            if len(two_bytes)==2:
+                int_val = two_bytes_to_int(two_bytes, bigEndian=True)
+                voltage_reading = map_int16_to_mV(int_val)
+                voltage_readings.append(voltage_reading)
+
+        return voltage_readings, found
+
+def CALC_SPECTRUM(measure_freq, voltage_readings, channels=[0,]):
+    
+    X = []
+    Y = []
 
     channel_readings = {ac: list() for ac in channels}
-    voltage_readings = []
-    try:
-        while s.in_waiting > 240 or len(voltage_readings) <= num_bytes/2:
-            buffer = s.read(240)
-            info = [buffer[i:i+2] for i in range(0, len(buffer), 2)]
-            for two_bytes in info:
-                int_val = int.from_bytes(two_bytes, 'big')
-                voltage_reading = (int_val - 0) * (20000.0) / (65536.0) - 10000.0
-                voltage_readings.append(voltage_reading)
-    except:
-        s.close()
-        raise
-
-    s.close()
-
-    for k in range(0, len(channels)):
+        
+    for k in range(len(channels)):
         channel_readings[k] = voltage_readings[k::len(channels)]
         channel_readings[k] = np.array(channel_readings[k])
 
         f, Pxx_den = signal.periodogram(channel_readings[k], measure_freq)
-        xper.append([f])
-        yper.append([Pxx_den])
+        X.append(f)
+        Y.append(Pxx_den)
 
-    return xper, yper, str(num_bytes), str(time.time() - ts), FastDAC_ID
+    return X, Y
+
+fdid = IDN()
+mf = int(READ_MEASURE_FREQ(channels=[0]))
+print('mf = ' + str(mf))
 
 
-X = [[],[],[],[]]
-Y = [[],[],[],[]]
-PORT = [0,'COM4']
-BR = [0,1750000]
-DUR = [0,1.5]
-SELAVG = [0, 5]
-SELAX = [0, 'log']
-CHNL = [0, [0]]
 
 app = dash.Dash(external_stylesheets=[dbc.themes.DARKLY])
 app.layout = html.Div(
@@ -120,7 +157,7 @@ app.layout = html.Div(
             ),
 
             dcc.Interval(id="graph-update", 
-                interval=1500, 
+                interval=1500,
                 n_intervals=0)]),
 
     dbc.Card([
@@ -141,43 +178,28 @@ app.layout = html.Div(
         dbc.ListGroup(
             [ 
                 dbc.Label(
-                    ['Port:'], color = '#1e81b0'
-                ),
-                dbc.Input(
-                    id='enter-port', 
-                    type='text', 
-                    value=str(PORT[-1]), 
-                    style={'color':'white'}
-                )
-            ],
-            flush=True,
-            style={'margin-top':'15px', 'margin-left': '15px', "margin-right": "15px"}
-        ),
-
-        dbc.ListGroup(
-            [
-                dbc.Label('Connection:', color = "#1e81b0"),
-                dbc.RadioItems(
-                    id='usb-checklist', 
-                    options=[
-                        {'label': 'Fiberoptic', 'value': 1750000},
-                        {'label': 'USB', 'value': 57600},
-                    ], 
-                    value = 1750000
-                    
-                ),
-            ], style = {'margin-top':'15px', 'margin-left': '15px', "margin-right": "15px"}, flush=True
-        ),
-
-        dbc.ListGroup(
-            [ 
-                dbc.Label(
-                    ['Callback Interval (s)'], color = '#1e81b0'
+                    ['FastDAC runtime (s)'], color = '#1e81b0'
                 ),
                 dbc.Input(
                     id='enter-duration', 
                     type='text', 
                     value=str(DUR[-1]), 
+                    style={'color':'white'}
+                )
+            ],flush=True,
+            style={'margin-top':'15px', 'margin-left': '15px',"margin-right": "15px"}
+        ),
+
+
+        dbc.ListGroup(
+            [ 
+                dbc.Label(
+                    ['Port'], color = '#1e81b0'
+                ),
+                dbc.Input(
+                    id='enter-port', 
+                    type='text', 
+                    value=str(PORT[-1]), 
                     style={'color':'white'}
                 )
             ],flush=True,
@@ -200,7 +222,7 @@ app.layout = html.Div(
                 ], 
                 inputStyle = {"margin-right": "5px"},
                 labelStyle = {"display":"inline-block", "margin-right": "20px"},    
-                value=[0],
+                value=[0,],
                 
             ),
         ],
@@ -210,38 +232,7 @@ app.layout = html.Div(
         "margin-right": "15px"}
     ),
 
-        dbc.ListGroup(
-            [
-
-            html.Label(
-            "Average over ",
-            style={'color':"#1e81b0", 
-            "margin-right": "15px"}
-            ),
-
-            dcc.Dropdown(
-                id='avg-dropdown', 
-                options=[
-                    {'label': '1', 'value': 1},
-                    {'label': '2', 'value': 2},
-                    {'label': '3', 'value': 3},
-                    {'label': '4', 'value': 4},
-                    {'label': '5', 'value': 5},
-                    {'label': '6', 'value': 6},
-                    {'label': '7', 'value': 7}
-                ], 
-                value=5,
-                style={'display':'inline-block', 'color':'black'}
-            ),
-            html.Label(" cycles", style={'color':"#1e81b0", 'margin-left': '15px'}),
-        ], 
         
-        style={'margin-top':'15px', 
-        'margin-left': '15px', 
-        "margin-right": "15px", 
-        'display':'inline-block'}, 
-        flush=True
-    ),
 
         dbc.ListGroup(
             [
@@ -294,7 +285,7 @@ app.layout = html.Div(
                     'margin-right':'10px'}),
 
             dbc.Label(
-                children='-', 
+                children=' ', 
                 id = 'label0')],
                 style={
                     "margin-top": "15px", 
@@ -342,7 +333,7 @@ app.layout = html.Div(
             [
             
             dbc.Label(
-                'bytes / cycle / channel: ', 
+                'number of bytes', 
                 color="#1e81b0",
                 style={
                 'margin-right':'15px'}
@@ -374,14 +365,15 @@ app.layout = html.Div(
         'padding-bottom':'50%',
         'padding-right':'0%',
         'padding-left':'0%'}
-        
+
 )
+
+voltage_values = []
 
 
 
 @app.callback(
     Output(component_id='live-graph', component_property='figure'),
-    Output(component_id='graph-update', component_property='interval'),
     Output(component_id = 'label0', component_property='children'),
     Output(component_id = 'label1', component_property='children'),
     Output(component_id = 'label2', component_property='children'),
@@ -389,110 +381,65 @@ app.layout = html.Div(
     [Input(component_id='graph-update', component_property='n_intervals'),
     Input("download-switch", "on"),
     Input(component_id='button', component_property='n_clicks'),
-    State(component_id='enter-port', component_property='value'),
-    State(component_id='usb-checklist', component_property='value'),
     State(component_id='enter-duration', component_property='value'),
-    State(component_id='avg-dropdown', component_property='value'),
+    State(component_id='enter-port', component_property='value'),
     State(component_id='channels-checklist', component_property='value'),
     State(component_id='axes-checklist', component_property='value'),
     ]
     )
 
-
-def callback(input_data, ON, n_clicks, port, baudrate, dur, selected_avg, channel_arr, selected_axes):
-
-    fig = make_subplots(rows=[1,2,2,2][len(CHNL[-1])-1], cols=[1,1,2,2][len(CHNL[-1])-1])
-    fig.update_layout(title_text="FastDAC Spectrum Analyzer", title_x=0.5, legend_title = "channels", template='plotly_dark')
-    fig.update_yaxes(type=SELAX[-1], title_text='mV*mV / Hz')
-    fig.update_xaxes(title_text='Frequency [Hz]')
-    fig.update_layout(showlegend=False)
-    
+def callback(input_data, ON, n_clicks, dur, port, channel_arr, selected_axes):
     changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
 
     if 'button' in changed_id:
-        PORT.append(port)
-        BR.append(baudrate)
-        DUR.append(dur)
-        SELAVG.append(selected_avg)
+        DUR.append(float(dur))
         SELAX.append(selected_axes)
         CHNL.append(channel_arr)
+        PORT.append(port)
         msg = 'loading...'
-
+        make_layout()
+        connect()
+        global fdid
+        fdid = IDN()
+        
     else:
-        msg = '-'
+        msg = ' '
 
-    while True:
-        try:
-            psd = PSD(str(PORT[-1]), str(BR[-1]), float(DUR[-1]*0.75), CHNL[-1])
-            Numbytes = psd[2]
-            Runtime = psd[3]
-            fdid = psd[4]
+    if ser.in_waiting==0:
+        ASK_SPEC_ANA(DUR[-1], mf, channels=CHNL[-1])
 
-            for k in range(0, len(CHNL[-1])):
-                    X[k].append(psd[0][k][0])
-                    Y[k].append(psd[1][k][0])
+    time.sleep(0.1)
+    for j in range(int(DUR[-1] / 0.1 * 0.7)):
+        data1 = GET_SPEC_ANA()
+        time.sleep(0.1)
+        voltage_values.extend(data1[0])
+        finished = data1[1]
 
-                    
-                    if len(X[k])<SELAVG[-1] and len(X[k])>0:
-                        xnew=np.mean(X[k][-len(X[k]):-1], axis=0)
-                        ynew=np.mean(Y[k][-len(X[k]):-1], axis=0)
+        
+        if finished == True:
+            data = CALC_SPECTRUM(mf, voltage_values[int(50*DUR[-1]):int(-50*DUR[-1])], channels=CHNL[-1])
+            fig.data = []
 
-                        fig.add_trace(
-                            go.Scatter(
-                                x=xnew[15:], 
-                                y=ynew[15:], 
-                                name=str(CHNL[-1][k])), 
-                                row=[1,2,1,2][k],
-                                col=[1,1,2,2][k])
+            for k in range(len(CHNL[-1])):    
+                fig.add_trace(
+                    go.Scatter(
+                        x=data[0][k][15:-1], 
+                        y=data[1][k][15:-1]), 
+                        row=[1,2,1,2][k],
+                        col=[1,1,2,2][k])
 
-                    elif SELAVG[-1]==1:
-                        xnew=psd[0][k][0]
-                        ynew=psd[1][k][0]
-
-                        fig.add_trace(
-                            go.Scatter(
-                                x=xnew[15:], 
-                                y=ynew[15:], 
-                                name=str(CHNL[-1][k])), 
-                                row=[1,2,1,2][k],
-                                col=[1,1,2,2][k])
-                        
-                    elif len(X[k][-1]) != len(X[k][-SELAVG[-1]]):
-                        msg = 'loading...'
-
-                    else:
-                        xnew=np.mean(X[k][-SELAVG[-1]:-1], axis=0)
-                        ynew=np.mean(Y[k][-SELAVG[-1]:-1], axis=0)
-                        msg = '-'
-
-                        fig.add_trace(
-                            go.Scatter(
-                                x=xnew[15:], 
-                                y=ynew[15:], 
-                                name=str(CHNL[-1][k])), 
-                                row=[1,2,1,2][k],
-                                col=[1,1,2,2][k])
-
-                        if ON == True:
-                            dt = datetime.now()
-                            fig.write_html('FDSA_{}-{}-{}_{}:{}:{}.html'.format(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second))
-                            df = pd.DataFrame([[xnew, ynew]], columns = ['Frequency (Hz)', 'mV*mV/Hz'])
-                            df.to_csv('FDSA_{}-{}-{}_{}:{}:{}.csv'.format(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second), index=False)
+            global num_pts
+            num_pts = len(data[0][k])
+            voltage_values.clear()
 
             break
 
-        except (FileNotFoundError, RuntimeWarning):
-            msg = 'No FastDAC at specified port'
-            Numbytes = str(0)
-            Runtime = str(0)
-            fdid = '-'
-
-        except (IndexError):
-            msg = 'loading...'
-
-    return fig, 1000*float(dur), msg, fdid, Runtime, Numbytes
+        
+    return fig, msg, fdid, DUR[-1], num_pts
 
 if __name__ == '__main__':
-     app.run_server(debug=True)  
+    app.run_server(debug=False, use_reloader=False)  
+   
+
     #  app.run_server(debug=False, host='0.0.0.0')  # NEVER use debug=True with host = '0.0.0.0' as it makes the computer vulnerable to attacks
  
