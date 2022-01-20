@@ -2,7 +2,8 @@
 # by Anton Cecic
 
 # Required packages:  pyserial, numpy, scipy, plotly, dash, dash_bootstrap_components, dash_extensions, dash_daq, pandas, os, datetime
-
+import warnings
+warnings.filterwarnings("ignore")
 from re import template
 import time
 import serial
@@ -31,11 +32,22 @@ from logging import exception
 import matplotlib.animation as animation
 import struct
 import matplotlib.pyplot as plt
-PORT = [0, 'COM4']
-DUR = [0,1]
+
+
+
+
+port1 = 'COM4'
+
+
+
+PORT = [0, port1]
+DUR = [0, 1]
 SELAVG = [0, 5]
 SELAX = [0, 'log']
 CHNL = [0, [0,]]
+MSG = ['','']
+mf = 0
+num_pts = 0
 
 def make_layout():
     global fig
@@ -50,93 +62,16 @@ make_layout()
 
 def connect():
     global ser
-    ser = serial.Serial(PORT[-1], baudrate=1750000, timeout=1)
+    try:
+        ser = serial.Serial(PORT[-1], baudrate=1750000, timeout=1)
+    except SerialException:
+        print('')
+        print("ERROR: TRY DIFFERENT PORT (LINE 39)")
+        print('')
+        exit()
+
 
 connect()
-
-def query(command):
-
-        ser.write(command)
-        data = ser.readline()
-        data = data.decode('ascii', errors='ignore').rstrip('\r\n')
-        return data
-
-def IDN():
-    return query(b"*IDN?\r")
-
-def READ_CONVERT_TIME(channel=[0,]):
-    cmd = "READ_CONVERT_TIME,{}\r".format(channel)
-    return query(bytes(cmd, "ascii"))
-
-def READ_MEASURE_FREQ(channels=[0,]):
-        convert_time = list()
-        for c in channels:
-            read_time_bytes = READ_CONVERT_TIME(c)
-            time.sleep(0.3)
-            read_time = int(read_time_bytes)
-
-            if read_time not in convert_time:
-                convert_time.append(read_time)
-
-        c_freq = 1/(convert_time[0]*10**-6)  # Hz
-        return c_freq/len(channels)
-
-def ASK_SPEC_ANA(duration, measure_freq, channels=[0,]):
-
-        num_bytes = int(np.round(measure_freq*duration))
-        cmd = "SPEC_ANA,{},{}\r".format("".join(str(ch) for ch in channels), num_bytes)
-        return ser.write(bytes(cmd,'ascii'))
-
-def two_bytes_to_int(two_bytes, bigEndian=True):
-
-    if bigEndian:
-        return struct.unpack(">H", two_bytes)[0]
-    else:
-        return struct.unpack("<H", two_bytes)[0]
-
-def map_int16_to_mV(int_val):
-    return (int_val - 0) * (20000.0) / (65536.0) - 10000.0
-
-def GET_SPEC_ANA():
-
-        voltage_readings = []
-        buffer = ser.read(ser.in_waiting)
-        stuff = buffer.decode('ascii', errors='ignore').rstrip('\r\n')
-        if 'READ_FINISHED' in stuff:
-            found = True
-        else:
-            found = False
-        info = [buffer[i:i+2] for i in range(0, len(buffer), 2)]
-        for two_bytes in info:
-            if len(two_bytes)==2:
-                int_val = two_bytes_to_int(two_bytes, bigEndian=True)
-                voltage_reading = map_int16_to_mV(int_val)
-                voltage_readings.append(voltage_reading)
-
-        return voltage_readings, found
-
-def CALC_SPECTRUM(measure_freq, voltage_readings, channels=[0,]):
-    
-    X = []
-    Y = []
-
-    channel_readings = {ac: list() for ac in channels}
-        
-    for k in range(len(channels)):
-        channel_readings[k] = voltage_readings[k::len(channels)]
-        channel_readings[k] = np.array(channel_readings[k])
-
-        f, Pxx_den = signal.periodogram(channel_readings[k], measure_freq)
-        X.append(f)
-        Y.append(Pxx_den)
-
-    return X, Y
-
-fdid = IDN()
-mf = int(READ_MEASURE_FREQ(channels=[0]))
-print('mf = ' + str(mf))
-
-
 
 app = dash.Dash(external_stylesheets=[dbc.themes.DARKLY])
 app.layout = html.Div(
@@ -286,7 +221,8 @@ app.layout = html.Div(
 
             dbc.Label(
                 children=' ', 
-                id = 'label0')],
+                id = 'label0',
+                style={'color':'#FF2D00'})],
                 style={
                     "margin-top": "15px", 
                     "margin-left": "15px", 
@@ -353,6 +289,27 @@ app.layout = html.Div(
                 "margin-right": "15px",
                 }),
 
+        dbc.ListGroup(
+            [
+            dbc.Label(
+                'Port: ', 
+                color="#1e81b0",
+                style={
+                    'margin-right':'10px'}),
+
+            dbc.Label(
+                children=port1,
+                id = 'label4')
+                ],
+                
+                style={
+
+                    "margin-top": "15px", 
+                    "margin-left": "15px", 
+                    "margin-right": "15px"}, flush=True
+        ),
+            
+
             ], style={
                 'vertical-align':'top', 
                 'display': 'inline-block', 
@@ -368,9 +325,88 @@ app.layout = html.Div(
 
 )
 
+def query(command):
+
+        ser.write(command)
+        data = ser.readline()
+        data = data.decode('ascii', errors='ignore').rstrip('\r\n')
+        return data
+
+def IDN():
+    return query(b"*IDN?\r")
+
+def READ_CONVERT_TIME(channel=[0,]):
+    cmd = "READ_CONVERT_TIME,{}\r".format(channel)
+    return query(bytes(cmd, "ascii"))
+
+def READ_MEASURE_FREQ(channels=[0,]):
+        convert_time = list()
+        for c in channels:
+            read_time_bytes = READ_CONVERT_TIME(c)
+            time.sleep(0.3)
+            read_time = int(read_time_bytes)
+
+            if read_time not in convert_time:
+                convert_time.append(read_time)
+
+        c_freq = 1/(convert_time[0]*10**-6)  # Hz
+        return c_freq/len(channels)
+
+def ASK_SPEC_ANA(duration, measure_freq, channels=[0,]):
+
+        num_bytes = int(np.round(measure_freq*duration))
+        cmd = "SPEC_ANA,{},{}\r".format("".join(str(ch) for ch in channels), num_bytes)
+        return ser.write(bytes(cmd,'ascii'))
+
+def two_bytes_to_int(two_bytes, bigEndian=True):
+
+    if bigEndian:
+        return struct.unpack(">H", two_bytes)[0]
+    else:
+        return struct.unpack("<H", two_bytes)[0]
+
+def map_int16_to_mV(int_val):
+    return (int_val - 0) * (20000.0) / (65536.0) - 10000.0
+
+def GET_SPEC_ANA():
+
+        voltage_readings = []
+        buffer = ser.read(ser.in_waiting)
+        stuff = buffer.decode('ascii', errors='ignore').rstrip('\r\n')
+        if 'READ_FINISHED' in stuff:
+            found = True
+        else:
+            found = False
+        info = [buffer[i:i+2] for i in range(0, len(buffer), 2)]
+        for two_bytes in info:
+            if len(two_bytes)==2:
+                int_val = two_bytes_to_int(two_bytes, bigEndian=True)
+                voltage_reading = map_int16_to_mV(int_val)
+                voltage_readings.append(voltage_reading)
+
+        return voltage_readings, found
+
+def CALC_SPECTRUM(measure_freq, voltage_readings, channels=[0,]):
+    
+    X = []
+    Y = []
+
+    channel_readings = {ac: list() for ac in channels}
+        
+    for k in range(len(channels)):
+        channel_readings[k] = voltage_readings[k::len(channels)]
+        channel_readings[k] = np.array(channel_readings[k])
+
+        f, Pxx_den = signal.periodogram(channel_readings[k], measure_freq)
+        X.append(f)
+        Y.append(Pxx_den)
+
+    return X, Y
+
+fdid = IDN()
+mf = int(READ_MEASURE_FREQ(channels=[0]))
+
 voltage_values = []
-
-
 
 @app.callback(
     Output(component_id='live-graph', component_property='figure'),
@@ -378,6 +414,7 @@ voltage_values = []
     Output(component_id = 'label1', component_property='children'),
     Output(component_id = 'label2', component_property='children'),
     Output(component_id = 'label3', component_property='children'),
+    Output(component_id = 'label4', component_property='children'),
     [Input(component_id='graph-update', component_property='n_intervals'),
     Input("download-switch", "on"),
     Input(component_id='button', component_property='n_clicks'),
@@ -396,20 +433,27 @@ def callback(input_data, ON, n_clicks, dur, port, channel_arr, selected_axes):
         SELAX.append(selected_axes)
         CHNL.append(channel_arr)
         PORT.append(port)
-        msg = 'loading...'
         make_layout()
         connect()
         global fdid
         fdid = IDN()
-        
+        MSG.append('loading...')
+
+    if not fdid[0:7] == 'DAC-ADC':
+        MSG.append('Try different port')
+        connect()
+
+    if not PORT[-1]==str(ser.port):
+        MSG.append('Try different port')
+
     else:
-        msg = ' '
+        MSG.append('')
 
     if ser.in_waiting==0:
         ASK_SPEC_ANA(DUR[-1], mf, channels=CHNL[-1])
 
     time.sleep(0.1)
-    for j in range(int(DUR[-1] / 0.1 * 0.7)):
+    for j in range(int(DUR[-1] / 0.1 * 0.9)):
         data1 = GET_SPEC_ANA()
         time.sleep(0.1)
         voltage_values.extend(data1[0])
@@ -428,6 +472,12 @@ def callback(input_data, ON, n_clicks, dur, port, channel_arr, selected_axes):
                         row=[1,2,1,2][k],
                         col=[1,1,2,2][k])
 
+
+                if ON == True:
+                    dt = datetime.datetime.now()
+                    fig.write_html('Spectrum_Ch{}_date{}-{}-{}_time{}{}.html'.format(CHNL[-1][k],dt.year, dt.month, dt.day, dt.hour, dt.minute))
+                    df = pd.DataFrame([[data[0][k][15:-1], data[1][k][15:-1]]], columns = ['Frequency (Hz)', 'mV*mV/Hz'])
+                    df.to_csv('Spectrum_Ch{}_date{}-{}-{}_time{}{}.csv'.format(CHNL[-1][k],dt.year, dt.month, dt.day, dt.hour, dt.minute), index=False)
             global num_pts
             num_pts = len(data[0][k])
             voltage_values.clear()
@@ -435,11 +485,9 @@ def callback(input_data, ON, n_clicks, dur, port, channel_arr, selected_axes):
             break
 
         
-    return fig, msg, fdid, DUR[-1], num_pts
+    return fig, MSG[-1], fdid, DUR[-1], num_pts, str(ser.port)
 
 if __name__ == '__main__':
     app.run_server(debug=False, use_reloader=False)  
-   
-
-    #  app.run_server(debug=False, host='0.0.0.0')  # NEVER use debug=True with host = '0.0.0.0' as it makes the computer vulnerable to attacks
- 
+    
+    
