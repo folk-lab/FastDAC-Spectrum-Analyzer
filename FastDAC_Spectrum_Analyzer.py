@@ -33,12 +33,7 @@ import matplotlib.animation as animation
 import struct
 import matplotlib.pyplot as plt
 
-
-
-
 port1 = 'COM4'
-
-
 
 PORT = [0, port1]
 DUR = [0, 1]
@@ -48,6 +43,7 @@ CHNL = [0, [0,]]
 MSG = ['','']
 mf = 0
 num_pts = 0
+voltage_values = []
 
 def make_layout():
     global fig
@@ -62,16 +58,16 @@ make_layout()
 
 def connect():
     global ser
-    try:
-        ser = serial.Serial(PORT[-1], baudrate=1750000, timeout=1)
-    except SerialException:
-        print('')
-        print("ERROR: TRY DIFFERENT PORT (LINE 39)")
-        print('')
-        exit()
+    ser = serial.Serial(PORT[-1], baudrate=1750000, timeout=1)
 
+try:
+    connect()
+except SerialException:
+    print('')
+    print("ERROR: TRY DIFFERENT PORT (LINE 36)")
+    print('')
+    exit()
 
-connect()
 
 app = dash.Dash(external_stylesheets=[dbc.themes.DARKLY])
 app.layout = html.Div(
@@ -140,6 +136,43 @@ app.layout = html.Div(
             ],flush=True,
             style={'margin-top':'15px', 'margin-left': '15px',"margin-right": "15px"}
         ),
+
+
+        dbc.ListGroup(
+            [
+
+            html.Label(
+            "Average over ",
+            style={'color':"#1e81b0", 
+            "margin-right": "15px"}
+            ),
+
+            dcc.Dropdown(
+                id='avg-dropdown', 
+                options=[
+                    {'label': '1', 'value': 1},
+                    {'label': '2', 'value': 2},
+                    {'label': '3', 'value': 3},
+                    {'label': '4', 'value': 4},
+                    {'label': '5', 'value': 5},
+                    {'label': '6', 'value': 6},
+                    {'label': '7', 'value': 7}
+                ], 
+                value=3,
+                style={'display':'inline-block', 'color':'black'}
+            ),
+            html.Label(" cycles", style={'color':"#1e81b0", 'margin-left': '15px'}),
+        ], 
+        
+        style={'margin-top':'15px', 
+        'margin-left': '15px', 
+        "margin-right": "15px", 
+        'display':'inline-block'}, 
+        flush=True
+    ),
+
+
+
 
         dbc.ListGroup(
             [
@@ -358,16 +391,6 @@ def ASK_SPEC_ANA(duration, measure_freq, channels=[0,]):
         cmd = "SPEC_ANA,{},{}\r".format("".join(str(ch) for ch in channels), num_bytes)
         return ser.write(bytes(cmd,'ascii'))
 
-def two_bytes_to_int(two_bytes, bigEndian=True):
-
-    if bigEndian:
-        return struct.unpack(">H", two_bytes)[0]
-    else:
-        return struct.unpack("<H", two_bytes)[0]
-
-def map_int16_to_mV(int_val):
-    return (int_val - 0) * (20000.0) / (65536.0) - 10000.0
-
 def GET_SPEC_ANA():
 
         voltage_readings = []
@@ -379,10 +402,9 @@ def GET_SPEC_ANA():
             found = False
         info = [buffer[i:i+2] for i in range(0, len(buffer), 2)]
         for two_bytes in info:
-            if len(two_bytes)==2:
-                int_val = two_bytes_to_int(two_bytes, bigEndian=True)
-                voltage_reading = map_int16_to_mV(int_val)
-                voltage_readings.append(voltage_reading)
+            int_val = int.from_bytes(two_bytes, 'big')
+            voltage_reading = (int_val - 0) * (20000.0) / (65536.0) - 10000.0
+            voltage_readings.append(voltage_reading)
 
         return voltage_readings, found
 
@@ -405,8 +427,8 @@ def CALC_SPECTRUM(measure_freq, voltage_readings, channels=[0,]):
 
 fdid = IDN()
 mf = int(READ_MEASURE_FREQ(channels=[0]))
-
-voltage_values = []
+X = [[],[],[],[]]
+Y = [[],[],[],[]]
 
 @app.callback(
     Output(component_id='live-graph', component_property='figure'),
@@ -420,12 +442,13 @@ voltage_values = []
     Input(component_id='button', component_property='n_clicks'),
     State(component_id='enter-duration', component_property='value'),
     State(component_id='enter-port', component_property='value'),
+    State(component_id='avg-dropdown', component_property='value'),
     State(component_id='channels-checklist', component_property='value'),
     State(component_id='axes-checklist', component_property='value'),
     ]
     )
 
-def callback(input_data, ON, n_clicks, dur, port, channel_arr, selected_axes):
+def callback(input_data, ON, n_clicks, dur, port, selected_avg, channel_arr, selected_axes):
     changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
 
     if 'button' in changed_id:
@@ -433,17 +456,27 @@ def callback(input_data, ON, n_clicks, dur, port, channel_arr, selected_axes):
         SELAX.append(selected_axes)
         CHNL.append(channel_arr)
         PORT.append(port)
+        SELAVG.append(selected_avg)
+        X[0] = []
+        X[1] = []
+        X[2] = []
+        X[3] = []
+        Y[0] = []
+        Y[1] = []
+        Y[2] = []
+        Y[3] = []
         make_layout()
-        connect()
-        global fdid
-        fdid = IDN()
-        MSG.append('loading...')
+        if not port == PORT[-1]:
+            connect()
+            global fdid
+            fdid = IDN()
+        print('loading changes...')
 
     if not fdid[0:7] == 'DAC-ADC':
         MSG.append('Try different port')
         connect()
 
-    if not PORT[-1]==str(ser.port):
+    if not PORT[-1] == str(ser.port):
         MSG.append('Try different port')
 
     else:
@@ -452,38 +485,85 @@ def callback(input_data, ON, n_clicks, dur, port, channel_arr, selected_axes):
     if ser.in_waiting==0:
         ASK_SPEC_ANA(DUR[-1], mf, channels=CHNL[-1])
 
-    time.sleep(0.1)
-    for j in range(int(DUR[-1] / 0.1 * 0.9)):
+    time.sleep(0.05)
+
+    for j in range(9):
         data1 = GET_SPEC_ANA()
         time.sleep(0.1)
         voltage_values.extend(data1[0])
         finished = data1[1]
-
-        
         if finished == True:
-            data = CALC_SPECTRUM(mf, voltage_values[int(50*DUR[-1]):int(-50*DUR[-1])], channels=CHNL[-1])
-            fig.data = []
+            break
 
-            for k in range(len(CHNL[-1])):    
+    if finished == True:
+
+        data = CALC_SPECTRUM(mf, voltage_values[int(50*DUR[-1]):int(-50*DUR[-1])], channels=CHNL[-1])
+        fig.data = []
+
+        for k in range(len(CHNL[-1])):
+
+            try:
+                X[k].append(data[0][k][0:len(X[k][-1])])
+                Y[k].append(data[1][k][0:len(X[k][-1])])
+            except IndexError:
+                X[k].append(data[0][k])
+                Y[k].append(data[1][k])
+
+            if len(X[k])<SELAVG[-1] and len(X[k])>0:
+
+                xnew=np.mean(X[k], axis=0)
+                ynew=np.mean(Y[k], axis=0)
+
                 fig.add_trace(
                     go.Scatter(
-                        x=data[0][k][15:-1], 
-                        y=data[1][k][15:-1]), 
+                        x=xnew[15:], 
+                        y=ynew[15:]),
                         row=[1,2,1,2][k],
                         col=[1,1,2,2][k])
 
+                del xnew, ynew
 
-                if ON == True:
-                    dt = datetime.datetime.now()
-                    fig.write_html('Spectrum_Ch{}_date{}-{}-{}_time{}{}.html'.format(CHNL[-1][k],dt.year, dt.month, dt.day, dt.hour, dt.minute))
-                    df = pd.DataFrame([[data[0][k][15:-1], data[1][k][15:-1]]], columns = ['Frequency (Hz)', 'mV*mV/Hz'])
-                    df.to_csv('Spectrum_Ch{}_date{}-{}-{}_time{}{}.csv'.format(CHNL[-1][k],dt.year, dt.month, dt.day, dt.hour, dt.minute), index=False)
-            global num_pts
-            num_pts = len(data[0][k])
-            voltage_values.clear()
 
-            break
+            elif SELAVG[-1]==1:
+                xnew=data[0][k][15:]
+                ynew=data[1][k][15:]
 
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=xnew[15:], 
+                        y=ynew[15:]), 
+                        row=[1,2,1,2][k],
+                        col=[1,1,2,2][k])
+                
+                del xnew, ynew
+
+
+            elif len(X[k][-1]) == len(X[k][-SELAVG[-1]]):
+                xnew=np.mean(X[k][-SELAVG[-1]:-1], axis=0)
+                ynew=np.mean(Y[k][-SELAVG[-1]:-1], axis=0)
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=xnew[15:], 
+                        y=ynew[15:]), 
+                        row=[1,2,1,2][k],
+                        col=[1,1,2,2][k])
+
+                del xnew, ynew
+
+            else:
+                MSG.append('different length arrays...')
+
+            if ON == True:
+                dt = datetime.datetime.now()
+                fig.write_html('Spectrum_Ch{}_date{}-{}-{}_time{}{}.html'.format(CHNL[-1][k],dt.year, dt.month, dt.day, dt.hour, dt.minute))
+                df = pd.DataFrame([[data[0][k][15:-1], data[1][k][15:-1]]], columns = ['Frequency (Hz)', 'mV*mV/Hz'])
+                df.to_csv('Spectrum_Ch{}_date{}-{}-{}_time{}{}.csv'.format(CHNL[-1][k],dt.year, dt.month, dt.day, dt.hour, dt.minute), index=False)
+        
+        global num_pts
+        num_pts = len(data[0][k])
+        voltage_values.clear()
         
     return fig, MSG[-1], fdid, DUR[-1], num_pts, str(ser.port)
 
