@@ -32,6 +32,9 @@ from logging import exception
 import matplotlib.animation as animation
 import struct
 import matplotlib.pyplot as plt
+from flask import request
+import sys
+import multiprocessing
 
 port1 = 'COM4'
 
@@ -67,7 +70,6 @@ except SerialException:
     print("ERROR: TRY DIFFERENT PORT (LINE 36)")
     print('')
     exit()
-
 
 app = dash.Dash(external_stylesheets=[dbc.themes.DARKLY])
 app.layout = html.Div(
@@ -158,7 +160,7 @@ app.layout = html.Div(
                     {'label': '6', 'value': 6},
                     {'label': '7', 'value': 7}
                 ], 
-                value=3,
+                value=1,
                 style={'display':'inline-block', 'color':'black'}
             ),
             html.Label(" cycles", style={'color':"#1e81b0", 'margin-left': '15px'}),
@@ -232,13 +234,29 @@ app.layout = html.Div(
                     "margin-right": "15px", 
                     "margin-bottom": "15px"},
                 flush=True,
-                )
+                ),
+
+        dbc.ListGroup(
+            [
+            dbc.Button('STOP', 
+                id='stop',
+                color="danger",
+                n_clicks=0)], 
+                style = {'margin-top':'15px', 
+                    'margin-left': '15px', 
+                    "margin-right": "15px", 
+                    "margin-bottom": "15px"
+                    },
+                flush=True,
+                ),
+
             ],
             style = {
                 'width':'25%',
                 'height':'25%',
                 'margin-left':'15px', 
-                'display': 'inline-block'}
+                'display': 'inline-block',
+                }
         ),
 
     dbc.Card(
@@ -302,7 +320,7 @@ app.layout = html.Div(
             [
             
             dbc.Label(
-                'number of bytes', 
+                'No. of points / channel', 
                 color="#1e81b0",
                 style={
                 'margin-right':'15px'}
@@ -413,6 +431,8 @@ def CALC_SPECTRUM(measure_freq, voltage_readings, channels=[0,]):
     X = []
     Y = []
 
+    print(voltage_readings)
+
     channel_readings = {ac: list() for ac in channels}
         
     for k in range(len(channels)):
@@ -440,6 +460,7 @@ Y = [[],[],[],[]]
     [Input(component_id='graph-update', component_property='n_intervals'),
     Input("download-switch", "on"),
     Input(component_id='button', component_property='n_clicks'),
+    Input(component_id='stop', component_property='n_clicks'),
     State(component_id='enter-duration', component_property='value'),
     State(component_id='enter-port', component_property='value'),
     State(component_id='avg-dropdown', component_property='value'),
@@ -448,8 +469,15 @@ Y = [[],[],[],[]]
     ]
     )
 
-def callback(input_data, ON, n_clicks, dur, port, selected_avg, channel_arr, selected_axes):
+def callback(input_data, ON, n_clicks, n_clicks1, dur, port, selected_avg, channel_arr, selected_axes):
     changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
+
+    if 'stop' in changed_id:
+        # p = multiprocessing.Process(target=app.run_server, name="Foo", kwargs=dict(debug=False))
+        # p.start()
+        # p.terminate()
+        #exit
+        print('STOP BUTTON CURRENTLY DOES NOT WORK!')
 
     if 'button' in changed_id:
         DUR.append(float(dur))
@@ -499,6 +527,9 @@ def callback(input_data, ON, n_clicks, dur, port, selected_avg, channel_arr, sel
 
         data = CALC_SPECTRUM(mf, voltage_values[int(50*DUR[-1]):int(-50*DUR[-1])], channels=CHNL[-1])
         fig.data = []
+
+
+        
 
         for k in range(len(CHNL[-1])):
 
@@ -553,7 +584,7 @@ def callback(input_data, ON, n_clicks, dur, port, selected_avg, channel_arr, sel
                 del xnew, ynew
 
             else:
-                MSG.append('different length arrays...')
+                MSG.append('ERROR:  Attempting to combine different size arrays')
 
             if ON == True:
                 dt = datetime.datetime.now()
@@ -563,6 +594,7 @@ def callback(input_data, ON, n_clicks, dur, port, selected_avg, channel_arr, sel
         
         global num_pts
         num_pts = len(data[0][k])
+        
         voltage_values.clear()
         
     return fig, MSG[-1], fdid, DUR[-1], num_pts, str(ser.port)
