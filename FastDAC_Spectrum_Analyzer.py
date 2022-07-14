@@ -17,8 +17,8 @@ from dash import html
 from dash import dcc
 import dash_bootstrap_components as dbc
 from dash.dependencies import Input, Output, State
-from dash_extensions import Download
-from dash_extensions.snippets import send_file
+import dash_extensions
+# from dash_extensions.snippets import send_file
 import dash_daq as daq
 import pandas as pd
 import os
@@ -36,7 +36,7 @@ from flask import request
 import sys
 import multiprocessing
 
-port1 = 'COM4'
+port1 = 'COM8'
 
 PORT = [0, port1]
 DUR = [0, 1]
@@ -46,7 +46,7 @@ CHNL = [0, [0,]]
 MSG = ['','']
 mf = 0
 num_pts = 0
-voltage_values = []
+voltage_bytes = []
 
 def make_layout():
     global fig
@@ -101,7 +101,7 @@ app.layout = html.Div(
                     ['Download'], color = '#1e81b0'
                 ),
                 daq.BooleanSwitch(id="download-switch", on=False), 
-                Download(id="download")
+                dcc.Download(id="download")
 
             ],
             flush=True,
@@ -117,7 +117,7 @@ app.layout = html.Div(
                     id='enter-duration', 
                     type='text', 
                     value=str(DUR[-1]), 
-                    style={'color':'white'}
+                    style={'color':'black'}
                 )
             ],flush=True,
             style={'margin-top':'15px', 'margin-left': '15px',"margin-right": "15px"}
@@ -133,7 +133,7 @@ app.layout = html.Div(
                     id='enter-port', 
                     type='text', 
                     value=str(PORT[-1]), 
-                    style={'color':'white'}
+                    style={'color':'black'}
                 )
             ],flush=True,
             style={'margin-top':'15px', 'margin-left': '15px',"margin-right": "15px"}
@@ -394,7 +394,7 @@ def READ_MEASURE_FREQ(channels=[0,]):
         convert_time = list()
         for c in channels:
             read_time_bytes = READ_CONVERT_TIME(c)
-            time.sleep(0.3)
+            time.sleep(0.1)
             read_time = int(read_time_bytes)
 
             if read_time not in convert_time:
@@ -411,27 +411,43 @@ def ASK_SPEC_ANA(duration, measure_freq, channels=[0,]):
 
 def GET_SPEC_ANA():
 
-        voltage_readings = []
+        INFO = []
         buffer = ser.read(ser.in_waiting)
         stuff = buffer.decode('ascii', errors='ignore').rstrip('\r\n')
         if 'READ_FINISHED' in stuff:
             found = True
+            buffer = buffer[0:-15]
+            ser.reset_input_buffer()
         else:
             found = False
-        info = [buffer[i:i+2] for i in range(0, len(buffer), 2)]
-        for two_bytes in info:
+        INFO.extend(buffer)
+        #print(info)
+        # print(INFO)
+        return INFO, found
+
+def CALC_SPECTRUM(measure_freq, bytes_arr, channels=[0,]):
+    # print(bytes_arr)
+    voltage_readings = []
+    pairs_bytes_arr = [bytes_arr[i:i+2] for i in range(0, len(bytes_arr), 2)]
+    
+    if not len(pairs_bytes_arr) % 2 == 0:
+        #bytes_arr = bytes_arr[0:-1]
+        print(bytes_arr)
+        print('!')
+
+    for two_bytes in pairs_bytes_arr:
+        if len(two_bytes) % 2 == 0:
             int_val = int.from_bytes(two_bytes, 'big')
             voltage_reading = (int_val - 0) * (20000.0) / (65536.0) - 10000.0
             voltage_readings.append(voltage_reading)
-
-        return voltage_readings, found
-
-def CALC_SPECTRUM(measure_freq, voltage_readings, channels=[0,]):
+            
+        else:
+            print('!!')
+            print(two_bytes)
+        
     
     X = []
     Y = []
-
-    print(voltage_readings)
 
     channel_readings = {ac: list() for ac in channels}
         
@@ -473,10 +489,6 @@ def callback(input_data, ON, n_clicks, n_clicks1, dur, port, selected_avg, chann
     changed_id = [p['prop_id'] for p in dash.callback_context.triggered][0]
 
     if 'stop' in changed_id:
-        # p = multiprocessing.Process(target=app.run_server, name="Foo", kwargs=dict(debug=False))
-        # p.start()
-        # p.terminate()
-        #exit
         print('STOP BUTTON CURRENTLY DOES NOT WORK!')
 
     if 'button' in changed_id:
@@ -515,21 +527,18 @@ def callback(input_data, ON, n_clicks, n_clicks1, dur, port, selected_avg, chann
 
     time.sleep(0.05)
 
-    for j in range(9):
+    for j in range(11):
         data1 = GET_SPEC_ANA()
         time.sleep(0.1)
-        voltage_values.extend(data1[0])
+        voltage_bytes.extend(data1[0])
         finished = data1[1]
         if finished == True:
             break
 
     if finished == True:
 
-        data = CALC_SPECTRUM(mf, voltage_values[int(50*DUR[-1]):int(-50*DUR[-1])], channels=CHNL[-1])
+        data = CALC_SPECTRUM(mf, voltage_bytes, channels=CHNL[-1])
         fig.data = []
-
-
-        
 
         for k in range(len(CHNL[-1])):
 
@@ -588,18 +597,19 @@ def callback(input_data, ON, n_clicks, n_clicks1, dur, port, selected_avg, chann
 
             if ON == True:
                 dt = datetime.datetime.now()
-                fig.write_html('Spectrum_Ch{}_date{}-{}-{}_time{}{}.html'.format(CHNL[-1][k],dt.year, dt.month, dt.day, dt.hour, dt.minute))
-                df = pd.DataFrame([[data[0][k][15:-1], data[1][k][15:-1]]], columns = ['Frequency (Hz)', 'mV*mV/Hz'])
-                df.to_csv('Spectrum_Ch{}_date{}-{}-{}_time{}{}.csv'.format(CHNL[-1][k],dt.year, dt.month, dt.day, dt.hour, dt.minute), index=False)
+                fig.write_html('Desktop/Spectrum_Ch{}_date{}-{}-{}_time{}{}.html'.format(CHNL[-1][k],dt.year, dt.month, dt.day, dt.hour, dt.minute))
+                d = {'Frequency (Hz)': data[0][k][15:], 'mV*mV/Hz': data[1][k][15:]}
+                df = pd.DataFrame(data=d)
+                df.to_csv('Desktop/Spectrum_Ch{}_date{}-{}-{}_time{}{}.csv'.format(CHNL[-1][k],dt.year, dt.month, dt.day, dt.hour, dt.minute), index=False)
         
         global num_pts
         num_pts = len(data[0][k])
         
-        voltage_values.clear()
+        voltage_bytes.clear()
         
     return fig, MSG[-1], fdid, DUR[-1], num_pts, str(ser.port)
 
 if __name__ == '__main__':
-    app.run_server(debug=False, use_reloader=False)  
+    app.run_server(debug=True, use_reloader=False)  
     
     
